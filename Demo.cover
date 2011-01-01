@@ -1,0 +1,173 @@
+       
+       
+    2: class Connector :
+           # Connectors are inputs and outputs. Only outputs should connect
+           # to inputs. Be careful NOT to have circular references
+           # As an output is changed it propagates the change to its connected inputs
+           #
+    1:     def __init__ (self, owner, name, activates=0, monitor=0) :
+   27:         self.value = None
+   27:         self.owner = owner
+   27:         self.name  = name
+               #print "-------Connector-------",name
+   27:         self.monitor  = monitor
+   27:         self.connects = []
+   27:         self.activates= activates   # If true change kicks evaluate function
+       
+    1:     def connect (self, inputs) :
+   11:         if type(inputs) != type([]) : inputs = [inputs]
+   24:         for input in inputs : self.connects.append(input)
+       
+       
+    1:     def set (self, value) :
+   32:         if self.value == value : 
+    5:                 print value
+    5:                 return      # Ignore if no change
+   27:         self.value = value
+   27:         if self.activates : self.owner.evaluate()
+   27:         if self.monitor :
+    3:             print "Connector %s-%s set to %s" % (self.owner.name,self.name,self.value)
+   40:         for con in self.connects : con.set(value)
+       
+    2: class LC :
+           # Logic Circuits have names and an evaluation function defined in child classes
+           # They will also contain a set of inputs and outputs
+    1:     def __init__ (self, name) :
+   10:         self.name = name
+               #print "-------------LC-----------------",name
+    5:     def evaluate (self) : return
+                   
+    2: class Not (LC) :         # Inverter. Input A. Output B.
+    1:     def __init__ (self, name) :
+    3:         LC.__init__ (self, name)
+    3:         self.A = Connector(self,'A', activates=1)
+    3:         self.B = Connector(self,'B')
+    4:     def evaluate (self) : self.B.set(not self.A.value)
+       
+    2: class Gate2 (LC) :         # two input gates. Inputs A and B. Output C.
+    1:     def __init__ (self, name) :
+    7:         LC.__init__ (self, name)
+               ##print name
+    7:         self.A = Connector(self,'A', activates=1)
+    7:         self.B = Connector(self,'B', activates=1)
+    7:         self.C = Connector(self,'C')
+       
+    2: class And (Gate2) :       # two input AND Gate
+    1:     def __init__ (self, name) :
+    3:         Gate2.__init__ (self, name)
+               ##print "--------------inside and gate------------",name        
+    7:     def evaluate (self) : self.C.set(self.A.value and self.B.value)
+       
+    2: class Or (Gate2) :         # two input OR gate.
+    1:     def __init__ (self, name) :
+    2:         Gate2.__init__ (self, name)
+    5:     def evaluate (self) : self.C.set(self.A.value or self.B.value)
+       
+    2: class Xor (Gate2) :
+    1:     def __init__ (self, name) :
+    1:         Gate2.__init__ (self, name)
+    1:         self.A1 = And("A1") # See circuit drawing to follow connections
+    1:         self.A2 = And("A2")
+    1:         self.I1 = Not("I1")
+    1:         self.I2 = Not("I2")
+    1:         self.O1 = Or ("O1")
+    1:         self.A.connect    ([ self.A1.A, self.I2.A])
+    1:         self.B.connect    ([ self.I1.A, self.A2.A])
+    1:         self.I1.B.connect ([ self.A1.B ])
+    1:         self.I2.B.connect ([ self.A2.B ])
+    1:         self.A1.C.connect ([ self.O1.A ])
+    1:         self.A2.C.connect ([ self.O1.B ])
+    1:         self.O1.C.connect ([ self.C ])
+       
+    2: class HalfAdder (LC) :         # One bit adder, A,B in. Sum and Carry out
+    1:     def __init__ (self, name) :
+               LC.__init__ (self, name)
+               self.A = Connector(self,'A',1)
+               self.B = Connector(self,'B',1)
+               self.S = Connector(self,'S')
+               self.C = Connector(self,'C')
+               self.X1= Xor("X1")
+               self.A1= And("A1")
+               self.A.connect    ([ self.X1.A, self.A1.A])
+               self.B.connect    ([ self.X1.B, self.A1.B])
+               self.X1.C.connect ([ self.S])
+               self.A1.C.connect ([ self.C])
+       
+    2: class FullAdder (LC) :         # One bit adder, A,B,Cin in. Sum and Cout out
+    1:     def __init__ (self, name) :
+               LC.__init__ (self, name)
+               self.A    = Connector(self,'A',1,monitor=1)
+               self.B    = Connector(self,'B',1,monitor=1)
+               self.Cin  = Connector(self,'Cin',1,monitor=1)
+               self.S    = Connector(self,'S',monitor=1)
+               self.Cout = Connector(self,'Cout',monitor=1)
+               self.H1= HalfAdder("H1")
+               self.H2= HalfAdder("H2")
+               self.O1= Or("O1")
+               self.A.connect    ([ self.H1.A ])
+               self.B.connect    ([ self.H1.B ])
+               self.Cin.connect  ([ self.H2.A ])
+               self.H1.S.connect ([ self.H2.B ])
+               self.H1.C.connect ([ self.O1.B])
+               self.H2.C.connect ([ self.O1.A])
+               self.H2.S.connect ([ self.S])
+               self.O1.C.connect ([ self.Cout])
+       
+    1: def bit (x, bit) : return x[bit]=='1' 
+       
+    1: def test4Bit (a, b) :    # a, b four char strings like '0110'
+           F0 = FullAdder ("F0")
+           F1 = FullAdder ("F1"); F0.Cout.connect(F1.Cin)
+           F2 = FullAdder ("F2"); F1.Cout.connect(F2.Cin)
+           F3 = FullAdder ("F3"); F2.Cout.connect(F3.Cin)
+           
+           F0.Cin.set(0)
+           F0.A.set(bit(a,3)); F0.B.set(bit(b,3))  # bits in lists are reversed from natural order
+           F1.A.set(bit(a,2)); F1.B.set(bit(b,2))
+           F2.A.set(bit(a,1)); F2.B.set(bit(b,1))
+           F3.A.set(bit(a,0)); F3.B.set(bit(b,0))
+       
+           print F3.Cout.value,
+           print F3.S.value,
+           print F2.S.value,
+           print F1.S.value,
+           print F0.S.value,
+       
+    1: def testFull (a,b,c) :
+           F1 = FullAdder ("F1")
+           F1.Cin.set(c)
+           F1.A.set(a)
+           F1.B.set(b)
+           
+           print "Cin=%d  A=%d  B=%d" % (c,a,b)
+           print "Sum=%d  Cout=%d" % (F1.S.value, F1.Cout.value)
+           
+    2: class Nor (Gate2):
+    1:         def __init__(self,name):
+    1:                 Gate2.__init__(self,name)
+    1:                 self.K1 = Or            ("K1")
+    1:                 self.L1 = Not           ("L1")
+    1:                 self.A.connect          ([self.K1.A])
+    1:                 self.B.connect          ([self.K1.B])
+    1:                 self.K1.C.connect       ([self.L1.A])
+    1:                 self.L1.B.connect       ([self.C])
+       
+       
+              
+    1: a = And("And1")
+    1: a.C.monitor=1
+    1: a.A.set(1)
+    1: a.B.set(0)
+       
+    1: c=Xor("Xor1")
+    1: c.C.monitor=1
+    1: c.A.set(1)
+    1: c.B.set(1)
+       
+       
+       
+    1: b=Nor("Nor1")
+    1: b.C.monitor=1
+    1: b.A.set(1)
+    1: b.B.set(1)
+       
